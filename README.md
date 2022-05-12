@@ -22,4 +22,10 @@ $ pip install pandas matplotlib numpy
 
 ### Java
 
+for running the java aplication you need to run the Server.java file. first.
+
+Then you need to run the Client.java file.
+
 ### Python
+
+For the python application simply run the graphs.py file.
