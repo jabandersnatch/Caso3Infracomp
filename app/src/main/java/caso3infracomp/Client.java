@@ -1,7 +1,6 @@
 package caso3infracomp;
 
 import java.io.*;
-import java.net.*;
 
 import java.net.Socket;
 import java.security.KeyFactory;
@@ -14,6 +13,7 @@ import java.util.Random;
 
 import javax.crypto.SecretKey;
 import javax.crypto.KeyGenerator;
+import javax.crypto.Mac;
 
 public class Client implements Runnable {
     private static final String SERVER_PUBLIC_KEY_FILE = "app/src/main/resources/server_public.key";
@@ -31,7 +31,6 @@ public class Client implements Runnable {
 
     private static final String ALGORITHM = "AES";
     private static final String KEY_ALGORITHM = "RSA";
-    private static final String TRANSFORMATION = "AES/ECB/PKCS5Padding";
 
     private String name;
 
@@ -190,7 +189,38 @@ public class Client implements Runnable {
             // send the ack to the server
             writer.println(ACK);
 
+            // read the hmac digest from the server
+            String hmacDigest = reader.readLine();
 
+            System.out.println("Hmac digest: " + hmacDigest);
+
+            // calculate the hmac digest of the secret key, the name and the id of the package
+
+            Mac sha256 = Mac.getInstance("HmacSHA256");
+
+            sha256.init(secretKey);
+
+            byte[] hmacDigestBytes = sha256.doFinal((this.name+ idPackage).getBytes("UTF8"));
+
+            String hmacDigestString = Util.byte2str(hmacDigestBytes);
+
+            System.out.println("Hmac digest string: " + hmacDigestString);
+
+            // compare the hmac digest with the hmac digest received from the server
+            if(!hmacDigestString.equals(hmacDigest)){
+                writer.println(ERROR);
+                System.out.println("Error: hmac digest not equals");
+                s.close();
+                throw new Exception("Hmac digest not valid");
+            }
+
+            writer.println(TERMINAR);
+
+            s.close();
+
+
+
+            // byte array to string
             writer.close();
             
             s.close();

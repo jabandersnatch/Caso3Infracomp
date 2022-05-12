@@ -214,6 +214,29 @@ public class Server implements Runnable {
 
             // return the state of the package cipher with the symmetric key
             writer.println(Util.byte2str(SymmetricCipher.encrypt(p.getState().getBytes("UTF8"), secretKey)));
+
+            // get the ACK from the client
+            String ack = reader.readLine();
+            System.out.println("ACK received: " + ack);
+            if(!ack.equals("ACK"))
+            {
+                writer.println("ERROR");
+                writer.close();
+                System.out.println("Client disconnected");
+                socketClient.close();
+                throw new Exception("Client not found");
+            }
+
+            // send digest to the client with SHA-256
+            Mac sha256 = Mac.getInstance("HmacSHA256");
+            sha256.init(secretKey);
+            byte[] digest = sha256.doFinal((name+idPackage).getBytes("UTF8"));
+            writer.println(Util.byte2str(digest));
+
+            // read the final response from the client
+            String finalResponse = reader.readLine();
+            System.out.println("Final response received: " + finalResponse);
+            System.out.println("Client disconnected");
             writer.close();
             socketClient.close();
 
