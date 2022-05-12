@@ -1,5 +1,4 @@
 package caso3infracomp;
-
 import java.io.*;
 import java.net.*;
 import java.nio.file.Path;
@@ -14,6 +13,7 @@ import javax.crypto.spec.SecretKeySpec;
 public class Server implements Runnable {
 
     public final static String PUBLIC_KEY_FILE = "app/src/main/resources/server_public.key";
+    public final static String LOG_FILE_ASYMMETRICT_TIME = "app/src/main/resources/log_asymmetric_time.txt";
     // Create a constant that saves the file path to the packages_info that is in the resources folder
     public final static String PACKAGES_STORAGE_FILE = Path.of(System.getProperty("user.dir"), "app","src", "main", "resources", "packages_info.csv").toString(); 
     public final static  int PORT = 3000; 
@@ -126,16 +126,14 @@ public class Server implements Runnable {
     @Override
     public void run() {
         try {
-            System.out.println("Server started");
             System.out.println("Client connected");
             // read the message from the client
             String message = reader.readLine();
-            System.out.println("Message received: " + message);
             if (!message.equals(INICIO)) {
                 System.out.println("Error: message not valid");
                 socketClient.close();
                 throw new Exception("Error: message not valid");}
-            
+                
             // send the message back to the client
             PrintWriter writer = new PrintWriter(socketClient.getOutputStream(), true);
             writer.println("ACK");
@@ -148,39 +146,38 @@ public class Server implements Runnable {
                 writer.close();
                 System.out.println("Client disconnected");
             }
-            System.out.println("Challenge received: " + challenge);
             // transform the challenge to a byte array
             byte[] challengeBytes = Util.str2byte(challenge);
-
+                
             // cipher the challenge with the private key
+            // init time for the ciphering
+            long startTime = System.nanoTime();
             byte[] cipherChallenge = AsymmetricCipher.encrypt(privateKey, KEY_ALGORITHM, challengeBytes);
+            long endTime = System.nanoTime();
+            // write the date of the ciphering in the log file and the time of the ciphering in seconds
+            Util.writeLog(LOG_FILE_ASYMMETRICT_TIME, "Ciphering Asymmetric", endTime - startTime);
 
-            System.out.println("Cipher challenge: " + Util.byte2str(cipherChallenge));
             // send the cipher challenge to the client
             writer.println(Util.byte2str(cipherChallenge));
-
+            
             // reads the symmetric key from the client and decrypt it with the private key
             String symmetricKey = reader.readLine();
             byte[] cipherSymmetricKey = Util.str2byte(symmetricKey);
             byte[] symmetricKeyBytes = AsymmetricCipher.decrypt(privateKey, KEY_ALGORITHM, cipherSymmetricKey);
-            System.out.println("Symmetric key received: " + Util.byte2str(symmetricKeyBytes));
-
+            
             // save the symmetric key to a variable
             secretKey = new SecretKeySpec(symmetricKeyBytes, 0, symmetricKeyBytes.length, ALGORITHM);
-
-            System.out.println("Secret key generated: " + secretKey.getEncoded());
+            
             // send the ACK to the client
             writer.println("ACK");
-
+            
             // decrypt the message with the symmetric key
             String encryptedMessage = reader.readLine();
-            System.out.println("Encrypted message received: " + encryptedMessage);
             byte[] cipherMessage = Util.str2byte(encryptedMessage);
             byte[] messageBytes = SymmetricCipher.decrypt(cipherMessage, secretKey);
-
+            
             String name = new String(messageBytes, "UTF-8");
-            System.out.println("Name received: " + name);
-
+            
             // is the name on the list of packages?
             if(!isNameOnPackageList(name))
             {
@@ -191,16 +188,13 @@ public class Server implements Runnable {
                 throw new Exception("Client not found");
             }
             writer.println("ACK");
-
+            
             // reads the ciphered message from the client tha contains the package id
             String cipherIdPackage = reader.readLine();
-            System.out.println("Package id received: " + cipherIdPackage);
             byte[] bytesCipherIdPackage = Util.str2byte(cipherIdPackage);
             byte[] idPackageBytes = SymmetricCipher.decrypt(bytesCipherIdPackage, secretKey);
-
+            
             String idPackage= new String(idPackageBytes, "UTF-8");
-
-            System.out.println("Package id decrypted: " + idPackage);
 
             // get the package from the list
             Package p = getPackage(Integer.parseInt(idPackage));
@@ -210,14 +204,15 @@ public class Server implements Runnable {
                 System.out.println("Client disconnected");
                 writer.println("ERROR");
                 writer.close();
+                socketClient.close();
+                throw new Exception("Client either not found or not the owner of the package");
             }
-
+            
             // return the state of the package cipher with the symmetric key
             writer.println(Util.byte2str(SymmetricCipher.encrypt(p.getState().getBytes("UTF8"), secretKey)));
-
+            
             // get the ACK from the client
             String ack = reader.readLine();
-            System.out.println("ACK received: " + ack);
             if(!ack.equals("ACK"))
             {
                 writer.println("ERROR");
@@ -228,30 +223,41 @@ public class Server implements Runnable {
             }
 
             // send digest to the client with SHA-256
+            System.out.println("Sending digest...");
             Mac sha256 = Mac.getInstance("HmacSHA256");
             sha256.init(secretKey);
             byte[] digest = sha256.doFinal((name+idPackage).getBytes("UTF8"));
             writer.println(Util.byte2str(digest));
-
+            
             // read the final response from the client
             String finalResponse = reader.readLine();
-            System.out.println("Final response received: " + finalResponse);
+            if (!finalResponse.equals(TERMINAR)) {
+                writer.println("ERROR");
+                writer.close();
+                socketClient.close();
+            }
             System.out.println("Client disconnected");
             writer.close();
             socketClient.close();
-
+            
         } catch (Exception e) {
             e.printStackTrace();
         }
-
+        
     }
-
+    
     public static void main(String[] args) {
         ServerSocket serverSocket;
+        System.out.println("Server started");
         try {
             serverSocket = new ServerSocket(PORT);
-            Socket socketClient = serverSocket.accept();
-            new Server(socketClient).run();
+            int i = 0;
+            Socket socketClient;
+            while (i < 32) {
+                socketClient = serverSocket.accept();
+                new Server(socketClient).run();
+                i++;
+            }
             serverSocket.close();
         } catch (IOException e) {
             // TODO Auto-generated catch block
